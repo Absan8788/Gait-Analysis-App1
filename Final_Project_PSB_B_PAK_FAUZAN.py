@@ -163,7 +163,7 @@ nama_otot = ["Gluteus Maximus", "Biceps Femoris Short", "Biceps Femoris Long",
              "Medial Gastrocnemius", "Tibialis Anterior", "Soleus"]
 
 with st.sidebar:
-    st.markdown("### Profil Peneliti")
+    st.markdown("### Profil Mahasiswa")
     st.markdown("**Nama:** Andi Ammarsyah Absan<br>**NRP:** 5023241018<br>**Dept:** Teknik Biomedik ITS", unsafe_allow_html=True)
     st.divider()
     
