@@ -50,7 +50,7 @@ def detect_crossing_time(time, signal, threshold):
             crossing_time.append(tcross)
     return crossing_time
 
-# FUNGSI BARU: Normalisasi & Threshold per Siklus (Sesuai Revisi Dosen)
+# Normalisasi & Threshold per Siklus
 def deteksi_segmen_aktif_per_siklus(t, signal, heel_crosses, threshold):
     segments = []
     # Jika tidak ada siklus terdeteksi, fallback ke normalisasi global
@@ -151,9 +151,7 @@ def load_and_process_data(file_bytes):
         "knee": knee, "ankle": ankle, "emg": emg, "fs": fs
     }, None
 
-# ==========================================
 # UI APLIKASI STREAMLIT
-# ==========================================
 st.set_page_config(page_title="Gait & EMG Analyzer", layout="wide")
 
 st.title("Gait Parameter & STFT Dashboard")
@@ -192,7 +190,7 @@ if uploaded_file is not None:
         cadence = 60.0 / mean_cycle if mean_cycle > 0 else 0
             
         tab1, tab2, tab3, tab4 = st.tabs([
-            "GAIT KINEMATICS", "DYNAMIC EMG (REVISI)", "PARAMETER TABEL", "STFT ANALYSIS"
+            "GAIT KINEMATICS", "DYNAMIC EMG", "PARAMETER TABEL", "STFT ANALYSIS"
         ])
         
         # TAB 1: KINEMATICS (Mengembalikan Raw & Filtered)
@@ -248,7 +246,7 @@ if uploaded_file is not None:
             
             st.divider()
             
-            st.subheader("Pola Aktivasi: Normalisasi Threshold per Siklus (Sesuai Revisi)")
+            st.subheader("Pola Aktivasi: Normalisasi Threshold per Siklus")
             st.info("Grafik di bawah ini memotong sinyal berdasarkan siklus FSR Tumit. Nilai Max dicari secara independen di tiap siklus, baru dikenakan threshold 0.05.")
             
             fig_act_rev = go.Figure()
@@ -274,7 +272,7 @@ if uploaded_file is not None:
             fig_act_rev.update_layout(height=450, margin=dict(t=30, b=40), xaxis_title="Time (s)", yaxis_title="Tested Muscle Groups")
             st.plotly_chart(fig_act_rev, use_container_width=True)
 
-        # TAB 3: PARAMETER (Dikembalikan ke format Tabel Dataframe)
+        # TAB 3: PARAMETER
         with tab3:
             col1, col2 = st.columns(2)
             with col1:
