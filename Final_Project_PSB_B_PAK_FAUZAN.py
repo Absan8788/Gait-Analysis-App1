@@ -37,18 +37,16 @@ def lpf_manual(data, fs, cutoff=6, order=4):
         y = y_new
     return y
 
-def detect_crossing_time(time, signal, threshold):
-    crossing_time = []
-    for i in range(1, len(signal)):
-        s1, s2 = signal[i-1], signal[i]
-        if (s1 < threshold <= s2) or (s1 >= threshold > s2):
-            t1, t2 = time[i-1], time[i]
-            if s2 != s1:
-                tcross = t1 + (threshold - s1) * (t2 - t1) / (s2 - s1)
-            else:
-                tcross = t2
-            crossing_time.append(tcross)
-    return crossing_time
+# FUNGSI BARU UNTUK DETEKSI FASE (IC, FF, HO, TO)
+def get_gait_events(time, norm_signal, threshold):
+    kontak_naik = []  # Saat nginjak
+    kontak_turun = [] # Saat angkat
+    for i in range(1, len(norm_signal)):
+        if norm_signal[i-1] < threshold <= norm_signal[i]:
+            kontak_naik.append(time[i])
+        elif norm_signal[i-1] >= threshold > norm_signal[i]:
+            kontak_turun.append(time[i])
+    return kontak_naik, kontak_turun
 
 # Normalisasi & Threshold per Siklus
 def deteksi_segmen_aktif_per_siklus(t, signal, heel_crosses, threshold):
@@ -161,7 +159,7 @@ nama_otot = ["Gluteus Maximus", "Biceps Femoris Short", "Biceps Femoris Long",
              "Medial Gastrocnemius", "Tibialis Anterior", "Soleus"]
 
 with st.sidebar:
-    st.markdown("### Profil Mahasiswa")
+    st.markdown("### Profil Peneliti")
     st.markdown("**Nama:** Andi Ammarsyah Absan<br>**NRP:** 5023241018<br>**Dept:** Teknik Biomedik ITS", unsafe_allow_html=True)
     st.divider()
     
@@ -178,14 +176,23 @@ if uploaded_file is not None:
         t, fs = data_sinyal['t'], data_sinyal['fs']
         n_samples = list(range(len(t)))
         
+        # 1. FILTERING
         heel_filt = lpf_manual(data_sinyal['heel'], fs, cutoff=nilai_cutoff, order=4)
         toe_filt = lpf_manual(data_sinyal['toe'], fs, cutoff=nilai_cutoff, order=4)
         
-        threshold_val = 0.15
-        heel_cross = detect_crossing_time(t, heel_filt, threshold_val)
-        toe_cross = detect_crossing_time(t, toe_filt, threshold_val)
+        # 2. NORMALISASI FSR (0 - 1) Sesuai instruksi Dosen
+        heel_norm = normalize_signal(heel_filt)
+        toe_norm = normalize_signal(toe_filt)
         
-        gait_cycle = cari_selisih(heel_cross[::2])
+        # 3. THRESHOLDING (Sekarang 0.15 berarti 15% dari tekanan maksimal)
+        threshold_val = 0.15
+        
+        # 4. DETEKSI EVENT (IC, FF, HO, TO)
+        heel_ic, heel_ho = get_gait_events(t, heel_norm, threshold_val) # IC (Initial Contact), HO (Heel Off)
+        toe_ff, toe_to = get_gait_events(t, toe_norm, threshold_val)    # FF (Foot Flat), TO (Toe Off)
+        
+        # Perhitungan Parameter Temporal
+        gait_cycle = cari_selisih(heel_ic)
         mean_cycle = cari_mean(gait_cycle) if len(gait_cycle) > 0 else 0
         cadence = 60.0 / mean_cycle if mean_cycle > 0 else 0
             
@@ -193,43 +200,56 @@ if uploaded_file is not None:
             "GAIT KINEMATICS", "DYNAMIC EMG", "PARAMETER TABEL", "STFT ANALYSIS"
         ])
         
-        # TAB 1: KINEMATICS (Mengembalikan Raw & Filtered)
+        # TAB 1: KINEMATICS
         with tab1:
             st.subheader("1. Raw vs Filtered Kinematics (FSR)")
-            
             fig_kin = make_subplots(rows=2, cols=1, shared_xaxes=True, vertical_spacing=0.1,
-                                    subplot_titles=("Raw Input Kinematics", f"Filtered Kinematics (Cutoff: {nilai_cutoff} Hz)"))
+                                    subplot_titles=("Raw Input Kinematics", f"Filtered & Normalized (Cutoff: {nilai_cutoff} Hz)"))
             # Raw
-            fig_kin.add_trace(go.Scatter(x=n_samples, y=data_sinyal['heel'], name="Raw Heel", line=dict(color='#2ca02c', width=1)), row=1, col=1)
-            fig_kin.add_trace(go.Scatter(x=n_samples, y=data_sinyal['toe'], name="Raw Toe", line=dict(color='#d62728', width=1)), row=1, col=1)
-            # Filtered
-            fig_kin.add_trace(go.Scatter(x=n_samples, y=heel_filt, name="Filt Heel", line=dict(color='#2ca02c', width=2)), row=2, col=1)
-            fig_kin.add_trace(go.Scatter(x=n_samples, y=toe_filt, name="Filt Toe", line=dict(color='#d62728', width=2)), row=2, col=1)
-            fig_kin.update_layout(height=500, margin=dict(t=40, b=40), xaxis2_title="Samples", yaxis_title="Amplitude (V)", yaxis2_title="Amplitude (V)")
+            fig_kin.add_trace(go.Scatter(x=t, y=data_sinyal['heel'], name="Raw Heel", line=dict(color='#2ca02c', width=1)), row=1, col=1)
+            fig_kin.add_trace(go.Scatter(x=t, y=data_sinyal['toe'], name="Raw Toe", line=dict(color='#d62728', width=1)), row=1, col=1)
+            
+            # Filtered & Normalized
+            fig_kin.add_trace(go.Scatter(x=t, y=heel_norm, name="Norm Heel", line=dict(color='#2ca02c', width=2)), row=2, col=1)
+            fig_kin.add_trace(go.Scatter(x=t, y=toe_norm, name="Norm Toe", line=dict(color='#d62728', width=2)), row=2, col=1)
+            fig_kin.add_hline(y=threshold_val, line_dash="dash", line_color="black", row=2, col=1, annotation_text="Threshold 15%")
+            fig_kin.update_layout(height=500, margin=dict(t=40, b=40), xaxis2_title="Time (s)", yaxis_title="Amplitude (V)", yaxis2_title="Normalized (0-1)")
             st.plotly_chart(fig_kin, use_container_width=True)
             
-            st.subheader("2. Segmentasi Fase Berjalan")
+            # FUNGSI PEMBANTU UNTUK MENGGAMBAR GARIS FASE
+            def draw_phase_lines(fig_target):
+                for x_val in heel_ic: fig_target.add_vline(x=x_val, line_dash="dot", line_color="blue", annotation_text="IC", annotation_position="top left")
+                for x_val in toe_ff: fig_target.add_vline(x=x_val, line_dash="dot", line_color="green", annotation_text="FF", annotation_position="top left")
+                for x_val in heel_ho: fig_target.add_vline(x=x_val, line_dash="dot", line_color="orange", annotation_text="HO", annotation_position="bottom right")
+                for x_val in toe_to: fig_target.add_vline(x=x_val, line_dash="dot", line_color="red", annotation_text="TO", annotation_position="bottom right")
+
+            st.subheader("2. Segmentasi Fase Berjalan (FSR)")
             fig_seg = go.Figure()
-            fig_seg.add_trace(go.Scatter(x=t, y=heel_filt, name="Heel", line=dict(color='#1f77b4', width=2)))
-            fig_seg.add_trace(go.Scatter(x=t, y=toe_filt, name="Toe", line=dict(color='#ff7f0e', width=2)))
+            fig_seg.add_trace(go.Scatter(x=t, y=heel_norm, name="Heel (Norm)", line=dict(color='#1f77b4', width=2)))
+            fig_seg.add_trace(go.Scatter(x=t, y=toe_norm, name="Toe (Norm)", line=dict(color='#ff7f0e', width=2)))
             fig_seg.add_hline(y=threshold_val, line_dash="dash", line_color="black")
-            for cross_t in sorted(heel_cross + toe_cross):
-                fig_seg.add_vline(x=cross_t, line_dash="dot", line_color="gray", opacity=0.5)
-            fig_seg.update_layout(height=350, margin=dict(t=30, b=40), xaxis_title="Time (seconds)", yaxis_title="Pressure / Voltage (V)")
+            draw_phase_lines(fig_seg) # Panggil fungsi gambar garis
+            fig_seg.update_layout(height=400, margin=dict(t=30, b=40), xaxis_title="Time (seconds)", yaxis_title="Normalized Value")
             st.plotly_chart(fig_seg, use_container_width=True)
 
-            st.subheader("3. Joint Angles Data")
+            st.subheader("3. Joint Angles Data dengan Penanda Fase")
             fig_joint = go.Figure()
-            for joint, color in zip(['hip', 'knee', 'ankle'], ['#9467bd', '#e377c2', '#17becf']):
-                fig_joint.add_trace(go.Scatter(x=n_samples, y=data_sinyal[joint], name=joint.capitalize(), line=dict(color=color)))
-            fig_joint.update_layout(height=350, margin=dict(t=30, b=40), xaxis_title="Samples", yaxis_title="Joint Angle (Degrees °)")
+            # LPF untuk Joint Angle agar kurva mulus saat dipresentasikan
+            hip_filt = lpf_manual(data_sinyal['hip'], fs, cutoff=nilai_cutoff, order=4)
+            knee_filt = lpf_manual(data_sinyal['knee'], fs, cutoff=nilai_cutoff, order=4)
+            ankle_filt = lpf_manual(data_sinyal['ankle'], fs, cutoff=nilai_cutoff, order=4)
+            
+            fig_joint.add_trace(go.Scatter(x=t, y=hip_filt, name="Hip", line=dict(color='#9467bd')))
+            fig_joint.add_trace(go.Scatter(x=t, y=knee_filt, name="Knee", line=dict(color='#e377c2')))
+            fig_joint.add_trace(go.Scatter(x=t, y=ankle_filt, name="Ankle", line=dict(color='#17becf')))
+            draw_phase_lines(fig_joint) # Garis fase tembus ke grafik Joint Angle
+            fig_joint.update_layout(height=400, margin=dict(t=30, b=40), xaxis_title="Time (seconds)", yaxis_title="Joint Angle (Degrees °)")
             st.plotly_chart(fig_joint, use_container_width=True)
 
-        # TAB 2: EMG (Mengembalikan Rectified & Menambahkan Analisis per Siklus)
+        # TAB 2: EMG 
         with tab2:
             emg_mentah = data_sinyal['emg']
             emg_rect = [[abs(val) for val in m_data] for m_data in emg_mentah]
-            # Normalisasi Envelope untuk tumpukan (global)
             emg_env_global = [normalize_signal(lpf_manual(m, fs, cutoff=nilai_cutoff)) for m in emg_rect]
             
             st.subheader("Tahapan Preprocessing EMG")
@@ -250,14 +270,11 @@ if uploaded_file is not None:
             st.info("Grafik di bawah ini memotong sinyal berdasarkan siklus FSR Tumit. Nilai Max dicari secara independen di tiap siklus, baru dikenakan threshold 0.05.")
             
             fig_act_rev = go.Figure()
-            # Gunakan fungsi deteksi siklus spesifik
-            # Hanya pakai tumit genap (0, 2, 4...) karena 1 siklus = tumit ke tumit
-            siklus_tumit_batas = heel_cross[::2] 
+            # Gunakan heel_ic yang baru diekstrak dari fungsi get_gait_events
+            siklus_tumit_batas = heel_ic 
             
             for i in range(9):
-                # Envelope belum dinormalisasi
                 env_raw = lpf_manual(emg_rect[i], fs, cutoff=nilai_cutoff)
-                # Deteksi per siklus
                 segments = deteksi_segmen_aktif_per_siklus(t, env_raw, siklus_tumit_batas, 0.05)
                 
                 for start, end in segments:
